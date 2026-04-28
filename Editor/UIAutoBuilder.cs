@@ -103,7 +103,7 @@ public class UIAutoBuilder : EditorWindow
                         "Each element must have: name, type (image, button, text, panel), posX, posY, width, height, color (hex). " +
                         "Use a 1080x1920 coordinate system (center is 0,0). " +
                         "If it's a button with text, include 'textValue'. If a sprite should be found, make 'name' match the likely filename. " +
-                        "Return ONLY the raw JSON array.";
+                        "Return ONLY the raw JSON array inside a code block.";
 
         string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={apiKey}";
         
@@ -120,20 +120,19 @@ public class UIAutoBuilder : EditorWindow
 
             if (request.result == UnityWebRequest.Result.Success)
             {
-                // Parse the response (Simplified for Gemini's structure)
                 string responseText = request.downloadHandler.text;
-                // Note: Real parsing would extract text from contents[0].parts[0].text
-                // For this demo, we'll extract the JSON block using Regex
-                var match = System.Text.RegularExpressions.Regex.Match(responseText, @"\[\s*\{.*\}\s*\]", System.Text.RegularExpressions.RegexOptions.Singleline);
-                if (match.Success)
+                // Extract JSON from markdown or raw text
+                string extractedJson = ExtractJson(responseText);
+                
+                if (!string.IsNullOrEmpty(extractedJson))
                 {
-                    jsonInput = match.Value;
-                    showVisionTab = false; // Switch to manual to show the result
+                    jsonInput = extractedJson;
+                    showVisionTab = false;
                     BuildUI();
                 }
                 else
                 {
-                    Debug.LogError("Could not parse JSON from AI response: " + responseText);
+                    Debug.LogError("Could not extract JSON from AI response. Raw response: " + responseText);
                 }
             }
             else
@@ -145,16 +144,53 @@ public class UIAutoBuilder : EditorWindow
         isAnalyzing = false;
     }
 
+    private string ExtractJson(string text)
+    {
+        // Try to find JSON in code blocks first
+        var match = System.Text.RegularExpressions.Regex.Match(text, @"```json\s*(.*?)\s*```", System.Text.RegularExpressions.RegexOptions.Singleline);
+        if (match.Success) return match.Groups[1].Value;
+        
+        match = System.Text.RegularExpressions.Regex.Match(text, @"```\s*(.*?)\s*```", System.Text.RegularExpressions.RegexOptions.Singleline);
+        if (match.Success) return match.Groups[1].Value;
+
+        // Fallback to finding the first [ and last ]
+        int start = text.IndexOf('[');
+        int end = text.LastIndexOf(']');
+        if (start != -1 && end != -1 && end > start)
+        {
+            return text.Substring(start, end - start + 1);
+        }
+        
+        return text;
+    }
+
     // --- REST OF THE BUILD LOGIC REMAINS THE SAME ---
-    private void BuildUI() { /* Same as previous version */ 
+    private void BuildUI() { 
         if (string.IsNullOrEmpty(jsonInput)) return;
+        string formattedJson = jsonInput.Trim();
         try {
-            string formattedJson = jsonInput.Trim();
-            if (!formattedJson.StartsWith("{\"elements\":")) formattedJson = "{\"elements\":" + formattedJson + "}";
+            // Remove markdown code blocks if present
+            if (formattedJson.StartsWith("```")) {
+                formattedJson = ExtractJson(formattedJson);
+            }
+
+            // Remove trailing commas which JsonUtility doesn't support
+            formattedJson = System.Text.RegularExpressions.Regex.Replace(formattedJson, @",\s*([\]}])", "$1");
+
+            // Wrap in elements object if it's a root array
+            if (formattedJson.StartsWith("[")) {
+                formattedJson = "{\"elements\":" + formattedJson + "}";
+            }
+            
             UILayoutData layout = JsonUtility.FromJson<UILayoutData>(formattedJson);
+            if (layout == null || layout.elements == null) {
+                Debug.LogError("Failed to parse JSON: Resulting layout or elements list is null.\nJSON: " + formattedJson);
+                return;
+            }
+
             GameObject root = Selection.activeGameObject;
             if (root == null || root.GetComponentInParent<Canvas>() == null) {
-                Canvas canvas = FindObjectOfType<Canvas>();
+                Canvas canvas = GameObject.FindObjectOfType<Canvas>();
                 if (canvas == null) {
                     GameObject canvasGo = new GameObject("UI_Root_Canvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
                     canvas = canvasGo.GetComponent<Canvas>();
@@ -162,9 +198,14 @@ public class UIAutoBuilder : EditorWindow
                 }
                 root = canvas.gameObject;
             }
-            foreach (var element in layout.elements) { CreateElement(element, root.transform); }
-            Debug.Log("<b>UI Build Complete!</b>");
-        } catch (System.Exception e) { Debug.LogError("UI Build Failed: " + e.Message); }
+            
+            foreach (var element in layout.elements) { 
+                if (element != null) CreateElement(element, root.transform); 
+            }
+            Debug.Log("<b>UI Build Complete!</b> Elements created: " + layout.elements.Count);
+        } catch (System.Exception e) { 
+            Debug.LogError("UI Build Failed: " + e.Message + "\nFull JSON attempted:\n" + formattedJson); 
+        }
     }
 
     private void CreateElement(UIElementData data, Transform parent) {
@@ -243,9 +284,13 @@ public class UIAutoBuilder : EditorWindow
     // Helper class for Editor Coroutines
     public static class EditorCoroutineRunner {
         public static void StartCoroutine(IEnumerator coroutine) {
-            EditorApplication.update += () => {
-                if (!coroutine.MoveNext()) EditorApplication.update -= null;
+            EditorApplication.CallbackFunction handler = null;
+            handler = () => {
+                if (!coroutine.MoveNext()) {
+                    EditorApplication.update -= handler;
+                }
             };
+            EditorApplication.update += handler;
         }
     }
 }
