@@ -1,0 +1,14 @@
+{
+  "name": "com.axel.ui-autobuilder",
+  "version": "1.0.0",
+  "displayName": "Axel UI Auto-Builder",
+  "description": "Automate Unity UI implementation using AI-generated JSON layouts and smart asset mapping.",
+  "unity": "2021.3",
+  "author": {
+    "name": "Axel",
+    "email": "axel@ui-mastermind.com"
+  },
+  "dependencies": {
+    "com.unity.textmeshpro": "3.0.6"
+  }
+}

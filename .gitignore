@@ -1,0 +1,18 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.bak
+*.user
+*.userprefs
+
+# Unity specific
+# We include .meta files in packages to ensure stable GUIDs
+# but we ignore local settings
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
