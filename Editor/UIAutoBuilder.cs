@@ -177,9 +177,11 @@ public class UIAutoBuilder : EditorWindow
             // Remove trailing commas which JsonUtility doesn't support
             formattedJson = System.Text.RegularExpressions.Regex.Replace(formattedJson, @",\s*([\]}])", "$1");
 
-            // Wrap in elements object if it's a root array
+            // Wrap in elements object if it's a root array or single root object
             if (formattedJson.StartsWith("[")) {
                 formattedJson = "{\"elements\":" + formattedJson + "}";
+            } else if (!formattedJson.Contains("\"elements\"")) {
+                formattedJson = "{\"elements\":[" + formattedJson + "]}";
             }
             
             UILayoutData layout = JsonUtility.FromJson<UILayoutData>(formattedJson);
