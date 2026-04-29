@@ -163,8 +163,8 @@ public class UIAutoBuilder : EditorWindow
                     GameObject canvasGo = new GameObject("UI_Root_Canvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
                     canvas = canvasGo.GetComponent<Canvas>();
                     canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                    ConfigureCanvasScaler(canvas);
                 }
-                ConfigureCanvasScaler(canvas);
                 root = canvas.gameObject;
             }
 
@@ -247,8 +247,6 @@ public class UIAutoBuilder : EditorWindow
         if (!AssetDatabase.IsValidFolder(searchPath)) searchPath = "Assets";
 
         // Unity's FindAssets does substring matching — filter to exact filename match only
-        bool hasExplicitSize = target.rectTransform.sizeDelta.x > 0 && target.rectTransform.sizeDelta.y > 0;
-
         string[] guids = AssetDatabase.FindAssets($"{spriteName} t:Sprite", new[] { searchPath });
         foreach (var guid in guids)
         {
@@ -256,7 +254,7 @@ public class UIAutoBuilder : EditorWindow
             if (string.Equals(System.IO.Path.GetFileNameWithoutExtension(path), spriteName, System.StringComparison.OrdinalIgnoreCase))
             {
                 Sprite s = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-                if (s != null) { ApplySprite(target, s, hasExplicitSize); return s.name; }
+                if (s != null) { ApplySprite(target, s); return s.name; }
             }
         }
 
@@ -269,7 +267,7 @@ public class UIAutoBuilder : EditorWindow
                 Sprite s = AssetDatabase.LoadAssetAtPath<Sprite>(bestPath);
                 if (s != null)
                 {
-                    ApplySprite(target, s, hasExplicitSize);
+                    ApplySprite(target, s);
                     Debug.Log($"[Fuzzy Match] '{spriteName}' → '{s.name}'");
                     return s.name;
                 }
@@ -279,13 +277,12 @@ public class UIAutoBuilder : EditorWindow
         return "";
     }
 
-    private void ApplySprite(Image target, Sprite s, bool hasExplicitSize = false)
+    private void ApplySprite(Image target, Sprite s)
     {
         target.sprite = s;
         target.color = Color.white;
         target.type = Image.Type.Simple;
-        // Only use native size for elements with no explicit dimensions (icons, decorations)
-        if (useNativeSize && !hasExplicitSize) target.SetNativeSize();
+        if (useNativeSize) target.SetNativeSize();
     }
 
     private string FindBestFuzzyMatch(string spriteName, string[] guids)
