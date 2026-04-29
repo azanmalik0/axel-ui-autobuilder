@@ -190,6 +190,7 @@ public class UIAutoBuilder : EditorWindow
             case "panel": case "image": case "button":
                 Image img = go.AddComponent<Image>();
                 img.color = HexToColor(data.color);
+                img.preserveAspect = true;
                 if (autoMatchSprites) matchedSpriteName = TryAssignSprite(img, data.spriteName ?? data.name);
                 if (type == "button") go.AddComponent<Button>();
                 string inferredText = data.textValue;
