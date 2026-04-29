@@ -3,25 +3,23 @@ using UnityEngine;
 using UnityEditor;
 using UnityEngine.UI;
 using TMPro;
-using UnityEngine.Networking;
-using System.Collections;
 
 public class UIAutoBuilder : EditorWindow
 {
     private string jsonInput = "";
     private Vector2 scrollPos;
-    
+
     // Settings
     private TMP_FontAsset defaultFont;
     private string assetSearchPath = "Assets";
     private bool autoMatchSprites = true;
     private bool useNativeSize = true;
+    private bool useFuzzyMatch = true;
 
-    // AI Vision Settings
-    private bool showVisionTab = false;
-    private Texture2D mockupTexture;
-    private string apiKey = "";
-    private bool isAnalyzing = false;
+    // Sprite Tools
+    private int activeTab = 0;
+    private Vector2 manifestScrollPos;
+    private string manifestPreview = "";
 
     [MenuItem("Tools/Universal UI/Auto-Builder Pro")]
     public static void ShowWindow()
@@ -29,40 +27,31 @@ public class UIAutoBuilder : EditorWindow
         GetWindow<UIAutoBuilder>("UI Auto-Builder Pro");
     }
 
-    private void OnEnable()
-    {
-        // Load API key from local storage
-        apiKey = EditorPrefs.GetString("UIAutoBuilder_ApiKey", "");
-    }
-
     private void OnGUI()
     {
         GUILayout.Label("Universal UI Auto-Builder Pro", EditorStyles.boldLabel);
-        
-        showVisionTab = GUILayout.Toolbar(showVisionTab ? 1 : 0, new string[] { "Manual JSON", "AI Vision (BETA)" }) == 1;
+
+        activeTab = GUILayout.Toolbar(activeTab, new string[] { "Manual JSON", "Sprite Tools" });
 
         EditorGUILayout.Space();
-        
-        if (showVisionTab)
-        {
-            DrawVisionTab();
-        }
-        else
-        {
-            DrawManualTab();
-        }
+
+        if (activeTab == 0) DrawManualTab();
+        else DrawSpriteToolsTab();
     }
 
     private void DrawManualTab()
     {
         defaultFont = (TMP_FontAsset)EditorGUILayout.ObjectField("Default TMP Font", defaultFont, typeof(TMP_FontAsset), false);
         assetSearchPath = EditorGUILayout.TextField("Asset Search Root", assetSearchPath);
-        
+
         EditorGUILayout.BeginHorizontal();
         autoMatchSprites = EditorGUILayout.Toggle("Auto-Match Sprites", autoMatchSprites);
         useNativeSize = EditorGUILayout.Toggle("Use Native Size", useNativeSize);
         EditorGUILayout.EndHorizontal();
-        
+        EditorGUI.BeginDisabledGroup(!autoMatchSprites);
+        useFuzzyMatch = EditorGUILayout.Toggle("Fuzzy Sprite Match", useFuzzyMatch);
+        EditorGUI.EndDisabledGroup();
+
         EditorGUILayout.Space();
         scrollPos = EditorGUILayout.BeginScrollView(scrollPos, GUILayout.Height(250));
         jsonInput = EditorGUILayout.TextArea(jsonInput, GUILayout.ExpandHeight(true));
@@ -74,116 +63,93 @@ public class UIAutoBuilder : EditorWindow
         }
     }
 
-    private void DrawVisionTab()
+    private void DrawSpriteToolsTab()
     {
-        apiKey = EditorGUILayout.PasswordField("Gemini API Key", apiKey);
-        if (GUI.changed) EditorPrefs.SetString("UIAutoBuilder_ApiKey", apiKey);
+        EditorGUILayout.HelpBox(
+            "Generate a manifest of all sprite names in your project. Paste it into Axel's chat so he picks exact file names instead of guessing.",
+            MessageType.Info);
 
-        mockupTexture = (Texture2D)EditorGUILayout.ObjectField("Mockup Screenshot", mockupTexture, typeof(Texture2D), false);
-        
-        EditorGUILayout.HelpBox("This will send the image to Gemini Vision to generate the JSON automatically. Requires a free API key from Google AI Studio.", MessageType.Info);
+        assetSearchPath = EditorGUILayout.TextField("Asset Search Root", assetSearchPath);
 
-        EditorGUI.BeginDisabledGroup(mockupTexture == null || string.IsNullOrEmpty(apiKey) || isAnalyzing);
-        if (GUILayout.Button(isAnalyzing ? "Analyzing Mockup..." : "Analyze & Build UI", GUILayout.Height(50)))
+        EditorGUILayout.Space();
+
+        if (GUILayout.Button("Generate Sprite Manifest", GUILayout.Height(40)))
         {
-            EditorCoroutineRunner.StartCoroutine(AnalyzeWithAI());
+            manifestPreview = GenerateSpriteManifest();
         }
-        EditorGUI.EndDisabledGroup();
+
+        if (!string.IsNullOrEmpty(manifestPreview))
+        {
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Manifest Preview (also copied to clipboard & saved to Assets/):", EditorStyles.boldLabel);
+            manifestScrollPos = EditorGUILayout.BeginScrollView(manifestScrollPos, GUILayout.Height(200));
+            EditorGUILayout.TextArea(manifestPreview, GUILayout.ExpandHeight(true));
+            EditorGUILayout.EndScrollView();
+
+            if (GUILayout.Button("Copy to Clipboard Again"))
+            {
+                GUIUtility.systemCopyBuffer = manifestPreview;
+            }
+        }
     }
 
-    private IEnumerator AnalyzeWithAI()
+    private string GenerateSpriteManifest()
     {
-        isAnalyzing = true;
-        
-        byte[] imageBytes = mockupTexture.EncodeToPNG();
-        string base64Image = System.Convert.ToBase64String(imageBytes);
+        string searchPath = assetSearchPath.Replace("\\", "/").TrimEnd('/');
+        if (!AssetDatabase.IsValidFolder(searchPath)) searchPath = "Assets";
 
-        // Prompt for the AI
-        string prompt = "Analyze this mobile UI mockup. Return a JSON list of UI elements. " +
-                        "Each element must have: name, type (image, button, text, panel), posX, posY, width, height, color (hex). " +
-                        "Use a 1080x1920 coordinate system (center is 0,0). " +
-                        "If it's a button with text, include 'textValue'. If a sprite should be found, make 'name' match the likely filename. " +
-                        "Return ONLY the raw JSON array inside a code block.";
-
-        string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={apiKey}";
-        
-        string payload = "{\"contents\":[{\"parts\":[{\"text\":\"" + prompt + "\"},{\"inline_data\":{\"mime_type\":\"image/png\",\"data\":\"" + base64Image + "\"}}]}]}";
-
-        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        string[] guids = AssetDatabase.FindAssets("t:Sprite", new[] { searchPath });
+        var names = new List<string>();
+        foreach (var guid in guids)
         {
-            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(payload);
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
-
-            yield return request.SendWebRequest();
-
-            if (request.result == UnityWebRequest.Result.Success)
-            {
-                string responseText = request.downloadHandler.text;
-                // Extract JSON from markdown or raw text
-                string extractedJson = ExtractJson(responseText);
-                
-                if (!string.IsNullOrEmpty(extractedJson))
-                {
-                    jsonInput = extractedJson;
-                    showVisionTab = false;
-                    BuildUI();
-                }
-                else
-                {
-                    Debug.LogError("Could not extract JSON from AI response. Raw response: " + responseText);
-                }
-            }
-            else
-            {
-                Debug.LogError("AI Analysis Failed: " + request.error);
-            }
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            string name = System.IO.Path.GetFileNameWithoutExtension(path);
+            if (!names.Contains(name)) names.Add(name);
         }
+        names.Sort();
 
-        isAnalyzing = false;
+        string manifest = "# Sprite Manifest — " + names.Count + " sprites\n# Paste this into Axel's chat so spriteName fields match exactly.\n\n" + string.Join("\n", names);
+
+        string savePath = "Assets/sprite_manifest.txt";
+        System.IO.File.WriteAllText(savePath, manifest);
+        AssetDatabase.Refresh();
+        GUIUtility.systemCopyBuffer = manifest;
+
+        Debug.Log($"<b>Sprite Manifest:</b> {names.Count} sprites found. Saved to {savePath} and copied to clipboard.");
+        return manifest;
     }
 
     private string ExtractJson(string text)
     {
-        // Try to find JSON in code blocks first
         var match = System.Text.RegularExpressions.Regex.Match(text, @"```json\s*(.*?)\s*```", System.Text.RegularExpressions.RegexOptions.Singleline);
         if (match.Success) return match.Groups[1].Value;
-        
+
         match = System.Text.RegularExpressions.Regex.Match(text, @"```\s*(.*?)\s*```", System.Text.RegularExpressions.RegexOptions.Singleline);
         if (match.Success) return match.Groups[1].Value;
 
-        // Fallback to finding the first [ and last ]
         int start = text.IndexOf('[');
         int end = text.LastIndexOf(']');
         if (start != -1 && end != -1 && end > start)
-        {
             return text.Substring(start, end - start + 1);
-        }
-        
+
         return text;
     }
 
-    // --- REST OF THE BUILD LOGIC REMAINS THE SAME ---
-    private void BuildUI() { 
+    private void BuildUI()
+    {
         if (string.IsNullOrEmpty(jsonInput)) return;
         string formattedJson = jsonInput.Trim();
         try {
-            // Remove markdown code blocks if present
-            if (formattedJson.StartsWith("```")) {
+            if (formattedJson.StartsWith("```"))
                 formattedJson = ExtractJson(formattedJson);
-            }
 
-            // Remove trailing commas which JsonUtility doesn't support
             formattedJson = System.Text.RegularExpressions.Regex.Replace(formattedJson, @",\s*([\]}])", "$1");
 
-            // Wrap in elements object if it's a root array or single root object
-            if (formattedJson.StartsWith("[")) {
+            if (formattedJson.StartsWith("["))
                 formattedJson = "{\"elements\":" + formattedJson + "}";
-            } else if (!formattedJson.Contains("\"elements\"")) {
+            else if (!formattedJson.Contains("\"elements\""))
                 formattedJson = "{\"elements\":[" + formattedJson + "]}";
-            }
-            
+
             UILayoutData layout = JsonUtility.FromJson<UILayoutData>(formattedJson);
             if (layout == null || layout.elements == null) {
                 Debug.LogError("Failed to parse JSON: Resulting layout or elements list is null.\nJSON: " + formattedJson);
@@ -200,18 +166,20 @@ public class UIAutoBuilder : EditorWindow
                 }
                 root = canvas.gameObject;
             }
-            
-            foreach (var element in layout.elements) { 
-                if (element != null) CreateElement(element, root.transform); 
-            }
+
+            foreach (var element in layout.elements)
+                if (element != null) CreateElement(element, root.transform);
+
             Debug.Log("<b>UI Build Complete!</b> Elements created: " + layout.elements.Count);
-        } catch (System.Exception e) { 
-            Debug.LogError("UI Build Failed: " + e.Message + "\nFull JSON attempted:\n" + formattedJson); 
+        } catch (System.Exception e) {
+            Debug.LogError("UI Build Failed: " + e.Message + "\nFull JSON attempted:\n" + formattedJson);
         }
     }
 
-    private void CreateElement(UIElementData data, Transform parent) {
+    private void CreateElement(UIElementData data, Transform parent)
+    {
         GameObject go = new GameObject(data.name);
+        Undo.RegisterCreatedObjectUndo(go, "Build UI Element");
         go.transform.SetParent(parent, false);
         RectTransform rt = go.AddComponent<RectTransform>();
         rt.sizeDelta = new Vector2(data.width, data.height);
@@ -231,9 +199,9 @@ public class UIAutoBuilder : EditorWindow
                     inferredText = sourceName.Replace("Btn_", "").Replace("Img_", "").Replace("_txt", "").Replace("_", " ").ToUpper();
                 }
                 if (!string.IsNullOrEmpty(inferredText)) {
-                    UIElementData btnText = new UIElementData { 
-                        name = "Label", type = "text", width = data.width * 0.9f, height = data.height * 0.9f, 
-                        textValue = inferredText, fontSize = data.fontSize > 0 ? data.fontSize : (int)(data.height * 0.35f), color = "#FFFFFF" 
+                    UIElementData btnText = new UIElementData {
+                        name = "Label", type = "text", width = data.width * 0.9f, height = data.height * 0.9f,
+                        textValue = inferredText, fontSize = data.fontSize > 0 ? data.fontSize : (int)(data.height * 0.35f), color = "#FFFFFF"
                     };
                     CreateElement(btnText, go.transform);
                 }
@@ -247,29 +215,78 @@ public class UIAutoBuilder : EditorWindow
                 if (defaultFont != null) txt.font = defaultFont;
                 break;
         }
-        if (data.children != null) { foreach (var child in data.children) { CreateElement(child, go.transform); } }
+        if (data.children != null)
+            foreach (var child in data.children) CreateElement(child, go.transform);
     }
 
-    private string TryAssignSprite(Image target, string spriteName) {
+    private string TryAssignSprite(Image target, string spriteName)
+    {
         if (string.IsNullOrEmpty(spriteName)) return "";
         string searchPath = assetSearchPath.Replace("\\", "/").TrimEnd('/');
         if (!AssetDatabase.IsValidFolder(searchPath)) searchPath = "Assets";
+
         string[] guids = AssetDatabase.FindAssets($"{spriteName} t:Sprite", new[] { searchPath });
-        if (guids.Length > 0) {
-            string path = AssetDatabase.GUIDToAssetPath(guids[0]);
-            Sprite s = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-            if (s != null) {
-                target.sprite = s;
-                target.color = Color.white;
-                target.type = Image.Type.Simple;
-                if (useNativeSize) target.SetNativeSize();
-                return s.name;
+        if (guids.Length > 0)
+        {
+            Sprite s = AssetDatabase.LoadAssetAtPath<Sprite>(AssetDatabase.GUIDToAssetPath(guids[0]));
+            if (s != null) { ApplySprite(target, s); return s.name; }
+        }
+
+        if (useFuzzyMatch)
+        {
+            string[] allGuids = AssetDatabase.FindAssets("t:Sprite", new[] { searchPath });
+            string bestPath = FindBestFuzzyMatch(spriteName, allGuids);
+            if (!string.IsNullOrEmpty(bestPath))
+            {
+                Sprite s = AssetDatabase.LoadAssetAtPath<Sprite>(bestPath);
+                if (s != null)
+                {
+                    ApplySprite(target, s);
+                    Debug.Log($"[Fuzzy Match] '{spriteName}' → '{s.name}'");
+                    return s.name;
+                }
             }
         }
+
         return "";
     }
 
-    private Color HexToColor(string hex) {
+    private void ApplySprite(Image target, Sprite s)
+    {
+        target.sprite = s;
+        target.color = Color.white;
+        target.type = Image.Type.Simple;
+        if (useNativeSize) target.SetNativeSize();
+    }
+
+    private string FindBestFuzzyMatch(string spriteName, string[] guids)
+    {
+        string[] queryTokens = spriteName.ToLower().Split(new char[] { '_', '-', ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
+        if (queryTokens.Length == 0) return null;
+
+        float bestScore = 0.35f;
+        string bestPath = null;
+
+        foreach (var guid in guids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            string name = System.IO.Path.GetFileNameWithoutExtension(path).ToLower();
+            string[] nameTokens = name.Split(new char[] { '_', '-', ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
+
+            int matches = 0;
+            foreach (var qt in queryTokens)
+                foreach (var nt in nameTokens)
+                    if (nt == qt) { matches++; break; }
+
+            float score = (float)matches / Mathf.Max(queryTokens.Length, nameTokens.Length);
+            if (score > bestScore) { bestScore = score; bestPath = path; }
+        }
+
+        return bestPath;
+    }
+
+    private Color HexToColor(string hex)
+    {
         if (string.IsNullOrEmpty(hex)) return Color.white;
         if (ColorUtility.TryParseHtmlString(hex, out Color color)) return color;
         return Color.white;
@@ -281,18 +298,5 @@ public class UIAutoBuilder : EditorWindow
         public float posX; public float posY; public float width; public float height;
         public string color; public string textValue; public int fontSize;
         public List<UIElementData> children;
-    }
-
-    // Helper class for Editor Coroutines
-    public static class EditorCoroutineRunner {
-        public static void StartCoroutine(IEnumerator coroutine) {
-            EditorApplication.CallbackFunction handler = null;
-            handler = () => {
-                if (!coroutine.MoveNext()) {
-                    EditorApplication.update -= handler;
-                }
-            };
-            EditorApplication.update += handler;
-        }
     }
 }
