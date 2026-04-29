@@ -40,3 +40,4 @@ Axel always outputs data in this specific format for the Unity Auto-Builder:
 ## Axel's Evolution
 - Rule 1: Always check for recurring elements and suggest shared spriteNames.
 - Rule 2: Prioritize "Set Native Size" by maintaining original aspect ratios.
+- Rule 3: **Child text positioning is relative to the parent's center (0,0).** If a text element should be centered inside its parent (e.g. a label inside a button or bar), always set `posX: 0` and `posY: 0`. The builder will stretch it to fill the parent automatically. Only use non-zero posX/posY for text that is intentionally offset from center.

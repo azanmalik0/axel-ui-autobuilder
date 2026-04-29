@@ -213,6 +213,13 @@ public class UIAutoBuilder : EditorWindow
                 txt.color = HexToColor(data.color);
                 txt.alignment = TextAlignmentOptions.Center;
                 if (defaultFont != null) txt.font = defaultFont;
+                // No explicit offset — stretch to fill parent so text is naturally centered
+                if (data.posX == 0 && data.posY == 0) {
+                    rt.anchorMin = Vector2.zero;
+                    rt.anchorMax = Vector2.one;
+                    rt.offsetMin = Vector2.zero;
+                    rt.offsetMax = Vector2.zero;
+                }
                 break;
         }
         if (data.children != null)
