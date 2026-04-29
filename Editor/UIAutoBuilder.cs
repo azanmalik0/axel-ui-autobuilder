@@ -225,11 +225,16 @@ public class UIAutoBuilder : EditorWindow
         string searchPath = assetSearchPath.Replace("\\", "/").TrimEnd('/');
         if (!AssetDatabase.IsValidFolder(searchPath)) searchPath = "Assets";
 
+        // Unity's FindAssets does substring matching — filter to exact filename match only
         string[] guids = AssetDatabase.FindAssets($"{spriteName} t:Sprite", new[] { searchPath });
-        if (guids.Length > 0)
+        foreach (var guid in guids)
         {
-            Sprite s = AssetDatabase.LoadAssetAtPath<Sprite>(AssetDatabase.GUIDToAssetPath(guids[0]));
-            if (s != null) { ApplySprite(target, s); return s.name; }
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            if (string.Equals(System.IO.Path.GetFileNameWithoutExtension(path), spriteName, System.StringComparison.OrdinalIgnoreCase))
+            {
+                Sprite s = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+                if (s != null) { ApplySprite(target, s); return s.name; }
+            }
         }
 
         if (useFuzzyMatch)
