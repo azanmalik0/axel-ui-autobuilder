@@ -164,6 +164,7 @@ public class UIAutoBuilder : EditorWindow
                     canvas = canvasGo.GetComponent<Canvas>();
                     canvas.renderMode = RenderMode.ScreenSpaceOverlay;
                 }
+                ConfigureCanvasScaler(canvas);
                 root = canvas.gameObject;
             }
 
@@ -174,6 +175,16 @@ public class UIAutoBuilder : EditorWindow
         } catch (System.Exception e) {
             Debug.LogError("UI Build Failed: " + e.Message + "\nFull JSON attempted:\n" + formattedJson);
         }
+    }
+
+    private void ConfigureCanvasScaler(Canvas canvas)
+    {
+        CanvasScaler scaler = canvas.GetComponent<CanvasScaler>();
+        if (scaler == null) scaler = canvas.gameObject.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1080, 1920);
+        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+        scaler.matchWidthOrHeight = 0.5f;
     }
 
     private void CreateElement(UIElementData data, Transform parent)
