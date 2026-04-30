@@ -204,13 +204,14 @@ public class UIAutoBuilder : EditorWindow
                 img.preserveAspect = true;
                 if (autoMatchSprites) matchedSpriteName = TryAssignSprite(img, data.spriteName ?? data.name);
                 if (type == "button") go.AddComponent<Button>();
+                bool hasExplicitTextChild = data.children != null && data.children.Exists(c => c.type != null && c.type.ToLower() == "text");
                 string inferredText = data.textValue;
                 bool shouldInfer = data.name.ToLower().Contains("_txt") || matchedSpriteName.ToLower().Contains("_txt");
                 if (string.IsNullOrEmpty(inferredText) && shouldInfer) {
                     string sourceName = matchedSpriteName.ToLower().Contains("_txt") ? matchedSpriteName : data.name;
                     inferredText = sourceName.Replace("Btn_", "").Replace("Img_", "").Replace("_txt", "").Replace("_", " ").ToUpper();
                 }
-                if (!string.IsNullOrEmpty(inferredText)) {
+                if (!string.IsNullOrEmpty(inferredText) && !hasExplicitTextChild) {
                     UIElementData btnText = new UIElementData {
                         name = "Label", type = "text", width = data.width * 0.9f, height = data.height * 0.9f,
                         textValue = inferredText, fontSize = data.fontSize > 0 ? data.fontSize : (int)(data.height * 0.35f), color = "#FFFFFF"
