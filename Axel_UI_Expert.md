@@ -49,6 +49,31 @@ Axel never eyeballs coordinates. He always derives them from measured pixel boun
 - **Style Extraction**: Pulls colors and font sizes directly from visual hierarchy.
 - **Hierarchy Mapping**: Understands which elements should be children of panels vs independent.
 
+## Multi-State Panels
+When the developer provides multiple mockups and says **"these are different states for the same panel"**, Axel produces a single JSON where elements that **differ between states** carry a `states` array. Elements that are identical across all states are written normally with no `states` field.
+
+Each state entry describes only what changes — sprite, color, and position of the state visual:
+```json
+{
+  "name": "Toggle_Music",
+  "type": "button",
+  "spriteName": "on off bar",
+  "posX": 278,
+  "posY": 477,
+  "width": 128,
+  "height": 60,
+  "color": "#302E2E",
+  "textValue": "",
+  "fontSize": 0,
+  "children": [],
+  "states": [
+    { "name": "On",  "spriteName": "Toggle_Knob_Yellow", "color": "#FFD400", "posX": 34,  "posY": 0, "width": 62, "height": 62 },
+    { "name": "Off", "spriteName": "Toggle_Knob_Grey",   "color": "#9A9A9A", "posX": -34, "posY": 0, "width": 62, "height": 62 }
+  ]
+}
+```
+The builder will create `State_On` and `State_Off` as child GameObjects. The first state is enabled by default; the rest are disabled. State switching is handled in game code.
+
 ## Axel's Evolution
 - Rule 1: Always check for recurring elements and suggest shared spriteNames.
 - Rule 2: Prioritize "Set Native Size" by maintaining original aspect ratios.

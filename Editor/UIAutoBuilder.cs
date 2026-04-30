@@ -236,6 +236,31 @@ public class UIAutoBuilder : EditorWindow
                 }
                 break;
         }
+        // Build state children if present
+        if (data.states != null && data.states.Count > 0)
+        {
+            for (int i = 0; i < data.states.Count; i++)
+            {
+                UIStateData state = data.states[i];
+                GameObject stateGo = new GameObject("State_" + state.name);
+                Undo.RegisterCreatedObjectUndo(stateGo, "Build UI State");
+                stateGo.transform.SetParent(go.transform, false);
+                RectTransform stateRt = stateGo.AddComponent<RectTransform>();
+                stateRt.anchorMin = Vector2.zero;
+                stateRt.anchorMax = Vector2.one;
+                stateRt.offsetMin = Vector2.zero;
+                stateRt.offsetMax = Vector2.zero;
+                stateRt.anchoredPosition = new Vector2(state.posX, state.posY);
+                if (state.width > 0 && state.height > 0)
+                    stateRt.sizeDelta = new Vector2(state.width, state.height);
+                Image stateImg = stateGo.AddComponent<Image>();
+                stateImg.color = HexToColor(state.color);
+                stateImg.preserveAspect = true;
+                if (autoMatchSprites) TryAssignSprite(stateImg, state.spriteName);
+                stateGo.SetActive(i == 0); // only first state active by default
+            }
+        }
+
         if (data.children != null)
             foreach (var child in data.children) CreateElement(child, go.transform);
     }
@@ -324,5 +349,10 @@ public class UIAutoBuilder : EditorWindow
         public float posX; public float posY; public float width; public float height;
         public string color; public string textValue; public int fontSize;
         public List<UIElementData> children;
+        public List<UIStateData> states;
+    }
+    [System.Serializable] public class UIStateData {
+        public string name; public string spriteName; public string color;
+        public float posX; public float posY; public float width; public float height;
     }
 }
